@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run Extension",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--extensionDevelopmentPath=${workspaceFolder}/client"
+            ],
+			"runtimeExecutable": "${execPath}",
+            "autoAttachChildProcesses": true,
+            "outFiles": [
+                "${workspaceFolder}/client/out/**/*.js"
+            ],
+        },
+        {
+            "name": "Extension Tests",
+            "type": "extensionHost",
+            "request": "launch",
+            "args": [
+                "--disable-extensions",
+                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--extensionTestsPath=${workspaceFolder}/client/out/tests/suite/index",
+                "${workspaceFolder}/client/src/tests/suite/workspace/test.code-workspace"
+            ],
+			"runtimeExecutable": "${execPath}",
+            "outFiles": [
+                "${workspaceFolder}/client/out/tests/**/*.js"
+            ],
+        }
+    ]
+}

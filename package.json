@@ -1,0 +1,8 @@
+{
+    "name": "@quentinguidee/gitignore-ultimate",
+    "license": "MIT",
+    "private": true,
+    "workspaces": [
+        "client"
+    ]
+}
