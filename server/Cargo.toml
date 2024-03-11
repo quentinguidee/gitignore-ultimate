@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 tower-lsp = "0.20.0"
+pest = "2.6"
+pest_derive = "2.6"
 
 [dependencies.tokio]
 version = "1.36.0"
