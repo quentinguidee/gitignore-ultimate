@@ -1,19 +1,32 @@
-mod parser;
-
 use tokio::io::{stdin, stdout};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, MessageType, OneOf, ServerCapabilities,
-    TextDocumentSyncCapability, TextDocumentSyncKind, WorkspaceFoldersServerCapabilities,
-    WorkspaceServerCapabilities,
+    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
+    InitializedParams, MessageType, OneOf, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+use crate::workspace::Workspace;
+
+mod file;
+mod parser;
+mod workspace;
 
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    workspace: Workspace,
+}
+
+impl Backend {
+    fn new(client: Client) -> Backend {
+        Self {
+            client,
+            workspace: Workspace::new(),
+        }
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -54,45 +67,19 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("file opened: {}", params.text_document.uri),
-            )
-            .await;
+        self.workspace.open(params);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("file changed: {}", params.text_document.uri),
-            )
-            .await;
+        self.workspace.apply_changes(params, &self.client).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("file closed: {}", params.text_document.uri),
-            )
-            .await;
+        self.workspace.close(params);
     }
 
-    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        self.client
-            .log_message(
-                MessageType::LOG,
-                format!("completion requested: {:?}", params.context),
-            )
-            .await;
-
-        let completion_list = vec![CompletionItem::new_simple(
-            "/".to_string(),
-            "Folder".to_string(),
-        )];
-        Ok(Some(CompletionResponse::Array(completion_list)))
+    async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        Ok(Some(CompletionResponse::Array(vec![])))
     }
 }
 
@@ -101,6 +88,6 @@ async fn main() {
     let stdin = stdin();
     let stdout = stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    let (service, socket) = LspService::new(Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }
