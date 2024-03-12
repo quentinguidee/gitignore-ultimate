@@ -1,0 +1,6 @@
+file    = { SOI ~ (line)* ~ EOI }
+line    = { (comment | path)? ~ NEWLINE }
+comment = { "#" ~ (!NEWLINE ~ ANY)* }
+path    = { "!"? ~ separator? ~ segment ~ (separator ~ segment)* ~ separator? }
+    segment   = { "**" | (!(separator | NEWLINE) ~ ANY)+ }
+    separator = { "/" }

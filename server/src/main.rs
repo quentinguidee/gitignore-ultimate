@@ -1,3 +1,5 @@
+mod parser;
+
 use tokio::io::{stdin, stdout};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
