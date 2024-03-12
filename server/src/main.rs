@@ -1,3 +1,7 @@
+use crate::ast::AST;
+use crate::parser::{GitignoreParser, Rule};
+use dashmap::DashMap;
+use pest::Parser;
 use tokio::io::{stdin, stdout};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
@@ -9,9 +13,11 @@ use tower_lsp::lsp_types::{
     WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+use url::Url;
 
 use crate::workspace::Workspace;
 
+mod ast;
 mod file;
 mod parser;
 mod workspace;
@@ -20,6 +26,7 @@ mod workspace;
 struct Backend {
     client: Client,
     workspace: Workspace,
+    asts: DashMap<Url, AST>,
 }
 
 impl Backend {
@@ -27,6 +34,7 @@ impl Backend {
         Self {
             client,
             workspace: Workspace::new(),
+            asts: DashMap::new(),
         }
     }
 }
@@ -70,15 +78,20 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let TextDocumentItem { uri, text, .. } = params.text_document;
-        self.workspace.open(uri, text);
+        self.workspace.open(uri.clone(), text);
+        self.refresh_ast(uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let VersionedTextDocumentIdentifier { uri, .. } = params.text_document;
         let content_changes = params.content_changes;
-        self.workspace
-            .apply_changes(&uri, content_changes, &self.client)
-            .await;
+
+        match self.workspace.apply_changes(&uri, content_changes).await {
+            Ok(_) => {}
+            Err(error) => return self.client.log_message(MessageType::ERROR, error).await,
+        };
+
+        self.refresh_ast(uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -88,6 +101,28 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
         Ok(Some(CompletionResponse::Array(vec![])))
+    }
+}
+
+impl Backend {
+    async fn refresh_ast(&self, uri: Url) {
+        let file = match self.workspace.files.get(&uri.to_string()) {
+            Some(file) => file,
+            None => {
+                let error = format!(
+                    "The file {url} is not found in the workspace.",
+                    url = uri.to_string()
+                );
+                return self.client.log_message(MessageType::ERROR, error).await;
+            }
+        };
+
+        let text = file.get_content();
+
+        let ast_pest = GitignoreParser::parse(Rule::file, text.as_str()).unwrap();
+        let ast = AST::parse(ast_pest);
+
+        self.asts.insert(uri, ast);
     }
 }
 

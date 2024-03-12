@@ -1,4 +1,3 @@
-use pest::Parser;
 use pest_derive::Parser;
 
 #[derive(Parser)]
@@ -8,6 +7,8 @@ pub struct GitignoreParser;
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[allow(unused_imports)]
+    use pest::Parser;
     use pest::{consumes_to, parses_to};
 
     #[test]
@@ -106,6 +107,7 @@ mod tests {
             rule: Rule::path,
             tokens: [
                 path(0, 6, [
+                    negate(0, 1),
                     segment(1, 2),
                     separator(2, 3),
                     segment(3, 4),

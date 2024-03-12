@@ -2,10 +2,7 @@ use std::fmt::{Debug, Formatter};
 
 use dashmap::DashMap;
 use tower_lsp::lsp_types::TextDocumentContentChangeEvent;
-use tower_lsp::{
-    lsp_types::{MessageType, Url},
-    Client,
-};
+use tower_lsp::lsp_types::Url;
 
 use super::file::File;
 
@@ -39,23 +36,20 @@ impl Workspace {
         &self,
         uri: &Url,
         content_changes: Vec<TextDocumentContentChangeEvent>,
-        client: &Client,
-    ) {
+    ) -> Result<(), String> {
         let mut file = match self.files.get_mut(&uri.to_string()) {
             Some(file) => file,
-            None => {
-                let error = format!(
-                    "The file {url} is not opened on the server.",
-                    url = uri.to_string()
-                );
-                client.log_message(MessageType::ERROR, error).await;
-                return;
-            }
+            None => Err(format!(
+                "The file {url} is not opened on the server.",
+                url = uri.to_string()
+            ))?,
         };
 
         for change in content_changes {
             file.apply_change(change)
         }
+
+        Ok(())
     }
 }
 

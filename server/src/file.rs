@@ -16,6 +16,10 @@ impl File {
         }
     }
 
+    pub fn get_content(&self) -> String {
+        self.text.to_string()
+    }
+
     pub fn get_line_content(&self, line_number: u32) -> String {
         self.text.line(line_number as usize).to_string()
     }
