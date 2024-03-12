@@ -1,11 +1,9 @@
-use dashmap::DashMap;
 use std::fmt::{Debug, Formatter};
-use tower_lsp::lsp_types::TextDocumentItem;
+
+use dashmap::DashMap;
+use tower_lsp::lsp_types::TextDocumentContentChangeEvent;
 use tower_lsp::{
-    lsp_types::{
-        DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        MessageType, Url,
-    },
+    lsp_types::{MessageType, Url},
     Client,
 };
 
@@ -22,44 +20,40 @@ impl Debug for Workspace {
 }
 
 impl Workspace {
-    pub fn add_file(&self, file: File) {
-        self.files.insert(file.url.to_string(), file);
-    }
-
-    pub fn remove_file(&self, url: Url) {
-        self.files.remove(&url.to_string());
-    }
-
     pub fn new() -> Self {
         Workspace {
             files: DashMap::new(),
         }
     }
 
-    pub fn open(&self, params: DidOpenTextDocumentParams) {
-        let TextDocumentItem { uri, text, .. } = params.text_document;
+    pub fn open(&self, uri: Url, text: String) {
         let file = File::new(uri, text);
-        self.add_file(file);
+        self.files.insert(file.url.to_string(), file);
     }
 
-    pub fn close(&self, params: DidCloseTextDocumentParams) {
-        self.remove_file(params.text_document.uri);
+    pub fn close(&self, uri: &Url) {
+        self.files.remove(&uri.to_string());
     }
 
-    pub async fn apply_changes(&self, params: DidChangeTextDocumentParams, client: &Client) {
-        let mut file = match self.files.get_mut(&params.text_document.uri.to_string()) {
+    pub async fn apply_changes(
+        &self,
+        uri: &Url,
+        content_changes: Vec<TextDocumentContentChangeEvent>,
+        client: &Client,
+    ) {
+        let mut file = match self.files.get_mut(&uri.to_string()) {
             Some(file) => file,
             None => {
                 let error = format!(
                     "The file {url} is not opened on the server.",
-                    url = params.text_document.uri.to_string()
+                    url = uri.to_string()
                 );
                 client.log_message(MessageType::ERROR, error).await;
                 return;
             }
         };
 
-        for change in params.content_changes {
+        for change in content_changes {
             file.apply_change(change)
         }
     }
@@ -69,7 +63,6 @@ impl Workspace {
 mod tests {
     use tower_lsp::lsp_types::Url;
 
-    use super::File;
     use super::Workspace;
 
     #[test]
@@ -83,12 +76,12 @@ mod tests {
             Url::parse("file:///b").unwrap(),
         ];
 
-        workspace.add_file(File::new(urls[0].clone(), "content".to_string()));
-        workspace.add_file(File::new(urls[1].clone(), "content".to_string()));
+        workspace.open(urls[0].clone(), "content".to_string());
+        workspace.open(urls[1].clone(), "content".to_string());
 
         assert_eq!(workspace.files.len(), 2);
 
-        workspace.remove_file(urls[1].clone());
+        workspace.close(&urls[1]);
 
         assert_eq!(workspace.files.len(), 1);
     }

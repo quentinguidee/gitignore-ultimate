@@ -3,8 +3,10 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
-    InitializedParams, MessageType, OneOf, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    InitializedParams, MessageType, OneOf, ServerCapabilities, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -67,15 +69,21 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.workspace.open(params);
+        let TextDocumentItem { uri, text, .. } = params.text_document;
+        self.workspace.open(uri, text);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        self.workspace.apply_changes(params, &self.client).await;
+        let VersionedTextDocumentIdentifier { uri, .. } = params.text_document;
+        let content_changes = params.content_changes;
+        self.workspace
+            .apply_changes(&uri, content_changes, &self.client)
+            .await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        self.workspace.close(params);
+        let TextDocumentIdentifier { uri, .. } = params.text_document;
+        self.workspace.close(&uri);
     }
 
     async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
