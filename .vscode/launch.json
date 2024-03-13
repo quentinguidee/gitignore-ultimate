@@ -20,7 +20,7 @@
             "request": "launch",
             "args": [
                 "--disable-extensions",
-                "--extensionDevelopmentPath=${workspaceFolder}",
+                "--extensionDevelopmentPath=${workspaceFolder}/client",
                 "--extensionTestsPath=${workspaceFolder}/client/out/tests/suite/index",
                 "${workspaceFolder}/client/src/tests/suite/workspace/test.code-workspace"
             ],
