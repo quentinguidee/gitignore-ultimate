@@ -1,20 +1,22 @@
-use crate::ast::AST;
-use crate::parser::{GitignoreParser, Rule};
 use dashmap::DashMap;
+use pest::error::LineColLocation;
 use pest::Parser;
 use tokio::io::{stdin, stdout};
+use tokio::task::spawn;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
-    InitializedParams, MessageType, OneOf, ServerCapabilities, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
-    VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
+    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    InitializeParams, InitializeResult, InitializedParams, MessageType, OneOf, Position, Range,
+    ServerCapabilities, TextDocumentIdentifier, TextDocumentItem, TextDocumentSyncCapability,
+    TextDocumentSyncKind, VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use url::Url;
 
+use crate::ast::AST;
+use crate::parser::GitignoreParser;
 use crate::workspace::Workspace;
 
 mod ast;
@@ -119,12 +121,55 @@ impl Backend {
         };
 
         let text = file.get_content();
+        let client = self.client.clone();
+        let uri_clone = uri.clone();
 
-        let ast_pest = GitignoreParser::parse(Rule::file, text.as_str());
+        // Spawn a new task to use the parser, since its result is not `Send`.
+        let handle = spawn(async move {
+            match GitignoreParser::parse(parser::Rule::file, text.as_str()) {
+                Ok(ast_pest) => {
+                    let ast = AST::parse(ast_pest);
+                    (Some(ast), None)
+                }
+                Err(error) => {
+                    let range = match error.line_col {
+                        LineColLocation::Pos((line, col)) => {
+                            let position = Position::new(line as u32 - 1, col as u32 - 1);
+                            Range::new(position, position)
+                        }
+                        LineColLocation::Span((start_line, start_col), (end_line, end_col)) => {
+                            let start = Position::new(start_line as u32 - 1, start_col as u32 - 1);
+                            let end = Position::new(end_line as u32 - 1, end_col as u32 - 1);
+                            Range::new(start, end)
+                        }
+                    };
 
-        if let Ok(ast_pest) = ast_pest {
-            let ast = AST::parse(ast_pest);
-            self.asts.insert(uri.clone(), ast);
+                    (
+                        None,
+                        Some(vec![Diagnostic::new(
+                            range,
+                            Some(DiagnosticSeverity::ERROR),
+                            None,
+                            Some("Gitignore Ultimate".to_string()),
+                            error.variant.message().to_string(),
+                            None,
+                            None,
+                        )]),
+                    )
+                }
+            }
+        });
+
+        let (ast, diagnostics) = handle.await.unwrap();
+
+        if let Some(diagnostics) = diagnostics {
+            client
+                .publish_diagnostics(uri.clone(), diagnostics, None)
+                .await;
+            return;
+        } else if let Some(ast) = ast {
+            self.asts.insert(uri, ast);
+            client.publish_diagnostics(uri_clone, vec![], None).await;
         }
     }
 }
