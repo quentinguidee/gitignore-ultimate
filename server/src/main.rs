@@ -97,6 +97,7 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let TextDocumentIdentifier { uri, .. } = params.text_document;
         self.workspace.close(&uri);
+        self.asts.remove(&uri);
     }
 
     async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
