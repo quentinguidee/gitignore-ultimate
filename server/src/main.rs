@@ -120,10 +120,12 @@ impl Backend {
 
         let text = file.get_content();
 
-        let ast_pest = GitignoreParser::parse(Rule::file, text.as_str()).unwrap();
-        let ast = AST::parse(ast_pest);
+        let ast_pest = GitignoreParser::parse(Rule::file, text.as_str());
 
-        self.asts.insert(uri, ast);
+        if let Ok(ast_pest) = ast_pest {
+            let ast = AST::parse(ast_pest);
+            self.asts.insert(uri.clone(), ast);
+        }
     }
 }
 
