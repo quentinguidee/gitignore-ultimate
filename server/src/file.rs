@@ -24,6 +24,12 @@ impl File {
         self.text.line(line_number as usize).to_string()
     }
 
+    pub fn get_position_at(&self, offset: usize) -> (u32, u32) {
+        let line = self.text.char_to_line(offset);
+        let character = offset - self.text.line_to_char(line);
+        (line as u32, character as u32)
+    }
+
     pub fn path(&self) -> Result<PathBuf, String> {
         let path = self.url.path();
         match percent_decode(&path.as_bytes()).decode_utf8() {
