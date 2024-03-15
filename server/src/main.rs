@@ -128,9 +128,15 @@ impl Backend {
 
         for error in errors {
             let span = error.span();
-            let position = Position::new(span.start as u32, span.end as u32);
+
+            let (start_line, start_char) = file.get_position_at(span.start);
+            let (end_line, end_char) = file.get_position_at(span.end);
+
             let diagnostic = Diagnostic::new(
-                Range::new(position, position),
+                Range::new(
+                    Position::new(start_line, start_char),
+                    Position::new(end_line, end_char),
+                ),
                 Some(DiagnosticSeverity::ERROR),
                 None,
                 Some("Gitignore Ultimate".to_string()),
