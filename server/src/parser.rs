@@ -1,141 +1,180 @@
-use pest_derive::Parser;
+use chumsky::prelude::{any, end, just, Rich};
+use chumsky::primitive::choice;
+use chumsky::text::newline;
+use chumsky::{extra, IterParser, Parser};
 
-#[derive(Parser)]
-#[grammar = "gitignore.pest"]
-pub struct GitignoreParser;
+use crate::parser::Token::{Comment, Path};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    File(Vec<Token>),
+    Path(Vec<Token>),
+    Segment(String),
+    Separator,
+    Negate,
+    Comment,
+}
+
+pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>>> {
+    let comment = just("#")
+        .then(any().and_is(newline().not()).repeated())
+        .map(|_| Comment);
+
+    let segment = any()
+        .and_is(just("/").not())
+        .and_is(newline().not())
+        .and_is(end().not())
+        .repeated()
+        .at_least(1)
+        .collect::<String>()
+        .map(|x| x.trim().to_string())
+        .map(|x| Token::Segment(x));
+
+    let negate = just("!").map(|_| Token::Negate);
+    let separator = just("/").map(|_| Token::Separator);
+
+    let path = negate
+        .or_not()
+        .then(separator.or_not())
+        .then(segment.or_not())
+        .then(
+            separator
+                .then(segment)
+                .repeated()
+                .collect::<Vec<_>>()
+                .map(|x| {
+                    x.into_iter()
+                        .map(|(a, b)| vec![a, b])
+                        .flatten()
+                        .collect::<Vec<_>>()
+                }),
+        )
+        .then(separator.or_not())
+        .map(|((((a, b), c), d), e)| {
+            let mut path = vec![];
+            if let Some(a) = a {
+                path.push(a);
+            }
+            if let Some(b) = b {
+                path.push(b);
+            }
+            if let Some(c) = c {
+                path.push(c);
+            }
+            path.extend(d);
+            if let Some(e) = e {
+                path.push(e);
+            }
+            Path(path)
+        });
+
+    let lines = choice((comment, path))
+        .separated_by(newline())
+        .allow_leading()
+        .allow_trailing()
+        .collect::<Vec<_>>()
+        .map(Token::File);
+
+    lines
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[allow(unused_imports)]
-    use pest::Parser;
-    use pest::{consumes_to, parses_to};
 
     #[test]
-    fn test_line() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "a/b/c\n",
-            rule: Rule::line,
-            tokens: [
-                line(0, 6, [
-                    path(0, 5, [
-                        segment(0, 1),
-                        separator(1, 2),
-                        segment(2, 3),
-                        separator(3, 4),
-                        segment(4, 5)
-                    ]),
-                ])
-            ]
-        }
+    fn test_path() {
+        let tree = parser().parse("a/b/c").unwrap();
+        assert_eq!(
+            tree,
+            Token::File(vec![Token::Path(vec![
+                Token::Segment("a".to_string()),
+                Token::Separator,
+                Token::Segment("b".to_string()),
+                Token::Separator,
+                Token::Segment("c".to_string())
+            ])])
+        );
+    }
+
+    #[test]
+    fn test_path_all_separators() {
+        let tree = parser().parse("/a/b/c/").unwrap();
+        assert_eq!(
+            tree,
+            Token::File(vec![Token::Path(vec![
+                Token::Separator,
+                Token::Segment("a".to_string()),
+                Token::Separator,
+                Token::Segment("b".to_string()),
+                Token::Separator,
+                Token::Segment("c".to_string()),
+                Token::Separator
+            ])])
+        );
     }
 
     #[test]
     fn test_line_empty() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "\n",
-            rule: Rule::line,
-            tokens: [
-                line(0, 1, [])
-            ]
-        }
+        let tree = parser().parse("\n\n").unwrap();
+        assert_eq!(tree, Token::File(vec![Path(vec![]), Path(vec![])]));
     }
 
     #[test]
     fn test_comment() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "# a comment\n",
-            rule: Rule::comment,
-            tokens: [
-                comment(0, 11)
-            ]
-        }
+        let tree = parser().parse("# a comment").unwrap();
+        assert_eq!(tree, Token::File(vec![Comment]));
     }
 
     #[test]
     fn test_comment_escaped() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "\\#not/a/comment\n",
-            rule: Rule::line,
-            tokens: [
-                line(0, 16, [
-                    path(0, 15, [
-                        segment(0, 5),
-                        separator(5, 6),
-                        segment(6, 7),
-                        separator(7, 8),
-                        segment(8, 15)
-                    ]),
-                ])
-            ]
-        }
+        let tree = parser().parse("\\#not/a/comment").unwrap();
+        assert_eq!(
+            tree,
+            Token::File(vec![Path(vec![
+                Token::Segment("\\#not".to_string()),
+                Token::Separator,
+                Token::Segment("a".to_string()),
+                Token::Separator,
+                Token::Segment("comment".to_string())
+            ])])
+        );
     }
 
     #[test]
     #[should_panic]
     fn test_line_path_error() {
-        GitignoreParser::parse(Rule::line, "a//b/c").unwrap();
-    }
-
-    #[test]
-    fn test_path() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "a/b/c",
-            rule: Rule::path,
-            tokens: [
-                path(0, 5, [
-                    segment(0, 1),
-                    separator(1, 2),
-                    segment(2, 3),
-                    separator(3, 4),
-                    segment(4, 5)
-                ])
-            ]
-        }
+        parser().parse("a//b/c").unwrap();
     }
 
     #[test]
     fn test_path_inverted() {
-        parses_to! {
-            parser: GitignoreParser,
-            input: "!a/b/c",
-            rule: Rule::path,
-            tokens: [
-                path(0, 6, [
-                    negate(0, 1),
-                    segment(1, 2),
-                    separator(2, 3),
-                    segment(3, 4),
-                    separator(4, 5),
-                    segment(5, 6)
-                ])
-            ]
-        }
+        let tree = parser().parse("!a/b/c").unwrap();
+        assert_eq!(
+            tree,
+            Token::File(vec![Path(vec![
+                Token::Negate,
+                Token::Segment("a".to_string()),
+                Token::Separator,
+                Token::Segment("b".to_string()),
+                Token::Separator,
+                Token::Segment("c".to_string())
+            ])])
+        );
     }
 
     #[test]
     fn test_path_inverted_escaped() {
-        let code = GitignoreParser::parse(Rule::path, "\\!a/b/c").unwrap();
-        assert_eq!(code.as_str(), "\\!a/b/c");
-
-        parses_to! {
-            parser: GitignoreParser,
-            input: "\\!a/b/c",
-            rule: Rule::path,
-            tokens: [
-                path(0, 7, [
-                    segment(0, 3),
-                    separator(3, 4),
-                    segment(4, 5),
-                    separator(5, 6),
-                    segment(6, 7)
-                ])
-            ]
-        }
+        let tree = parser().parse("\\!a/b/c").unwrap();
+        assert_eq!(
+            tree,
+            Token::File(vec![Path(vec![
+                Token::Segment("\\!a".to_string()),
+                Token::Separator,
+                Token::Segment("b".to_string()),
+                Token::Separator,
+                Token::Segment("c".to_string())
+            ])])
+        );
     }
 }

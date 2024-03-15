@@ -1,8 +1,8 @@
+use crate::ast::AST;
+use crate::parser::parser;
+use chumsky::prelude::*;
 use dashmap::DashMap;
-use pest::error::LineColLocation;
-use pest::Parser;
 use tokio::io::{stdin, stdout};
-use tokio::task::spawn;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
@@ -15,8 +15,6 @@ use tower_lsp::lsp_types::{
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use url::Url;
 
-use crate::ast::AST;
-use crate::parser::GitignoreParser;
 use crate::workspace::Workspace;
 
 mod ast;
@@ -121,55 +119,39 @@ impl Backend {
         };
 
         let text = file.get_content();
-        let client = self.client.clone();
-        let uri_clone = uri.clone();
 
-        // Spawn a new task to use the parser, since its result is not `Send`.
-        let handle = spawn(async move {
-            match GitignoreParser::parse(parser::Rule::file, text.as_str()) {
-                Ok(ast_pest) => {
-                    let ast = AST::parse(ast_pest);
-                    (Some(ast), None)
-                }
-                Err(error) => {
-                    let range = match error.line_col {
-                        LineColLocation::Pos((line, col)) => {
-                            let position = Position::new(line as u32 - 1, col as u32 - 1);
-                            Range::new(position, position)
-                        }
-                        LineColLocation::Span((start_line, start_col), (end_line, end_col)) => {
-                            let start = Position::new(start_line as u32 - 1, start_col as u32 - 1);
-                            let end = Position::new(end_line as u32 - 1, end_col as u32 - 1);
-                            Range::new(start, end)
-                        }
-                    };
+        let parser = parser();
+        let (out, err) = parser.parse(text.as_str()).into_output_errors();
 
-                    (
-                        None,
-                        Some(vec![Diagnostic::new(
-                            range,
-                            Some(DiagnosticSeverity::ERROR),
-                            None,
-                            Some("Gitignore Ultimate".to_string()),
-                            error.variant.message().to_string(),
-                            None,
-                            None,
-                        )]),
-                    )
-                }
-            }
-        });
+        let no_errors = err.is_empty();
+        let errors = err.into_iter();
 
-        let (ast, diagnostics) = handle.await.unwrap();
-
-        if let Some(diagnostics) = diagnostics {
-            client
-                .publish_diagnostics(uri.clone(), diagnostics, None)
+        for error in errors {
+            let span = error.span();
+            let position = Position::new(span.start as u32, span.end as u32);
+            let diagnostic = Diagnostic::new(
+                Range::new(position, position),
+                Some(DiagnosticSeverity::ERROR),
+                None,
+                Some("Gitignore Ultimate".to_string()),
+                error.to_string(),
+                None,
+                None,
+            );
+            self.client
+                .publish_diagnostics(uri.clone(), vec![diagnostic], None)
                 .await;
-            return;
-        } else if let Some(ast) = ast {
+        }
+
+        if no_errors {
+            self.client
+                .publish_diagnostics(uri.clone(), vec![], None)
+                .await;
+        }
+
+        if out.is_some() {
+            let ast = AST::parse(out.unwrap());
             self.asts.insert(uri, ast);
-            client.publish_diagnostics(uri_clone, vec![], None).await;
         }
     }
 }

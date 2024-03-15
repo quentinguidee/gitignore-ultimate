@@ -5,12 +5,11 @@ edition = "2021"
 
 [dependencies]
 tower-lsp = "0.20.0"
-pest = "2.6"
-pest_derive = "2.6"
 percent-encoding = "2.3.1"
 ropey = "1.6.1"
 dashmap = "5.5.3"
 url = "2.5.0"
+chumsky = "1.0.0-alpha.6"
 
 [dependencies.tokio]
 version = "1.36.0"
