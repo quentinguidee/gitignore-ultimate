@@ -35,7 +35,6 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
 
     let path = negate
         .or_not()
-        .then(separator.or_not())
         .then(segment.or_not())
         .then(
             separator
@@ -50,7 +49,7 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
                 }),
         )
         .then(separator.or_not())
-        .map(|((((a, b), c), d), e)| {
+        .map(|(((a, b), c), d)| {
             let mut path = vec![];
             if let Some(a) = a {
                 path.push(a);
@@ -58,12 +57,9 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
             if let Some(b) = b {
                 path.push(b);
             }
-            if let Some(c) = c {
-                path.push(c);
-            }
-            path.extend(d);
-            if let Some(e) = e {
-                path.push(e);
+            path.extend(c);
+            if let Some(d) = d {
+                path.push(d);
             }
             Path(path)
         });
@@ -151,8 +147,14 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn test_line_path_error() {
+    fn test_path_error() {
         parser().parse("a//b/c").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_path_starting_with_double_separator() {
+        parser().parse("//b/c").unwrap();
     }
 
     #[test]
