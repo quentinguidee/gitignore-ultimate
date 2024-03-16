@@ -1,9 +1,9 @@
-watch:
-	yarn workspace @quentinguidee/gitignore-ultimate-client run watch
+gitignore-watch:
+	yarn workspace @quentinguidee/gitignore-ultimate-vscode run watch
 
-.PHONY: server
+.PHONY: gitignore-server
 
-server:
-	cd server && cargo build
-	mkdir -p client/bin
-	cp server/target/debug/server client/bin/server || cp server/target/debug/server.exe client/bin/server.exe
+gitignore-server:
+	cargo build -p gitignore-ultimate-server
+	mkdir -p clients/vscode-gitignore/bin
+	cp target/debug/gitignore-ultimate-server clients/vscode-gitignore/bin/server || cp target/debug/gitignore-ultimate-server.exe clients/vscode-gitignore/bin/server.exe

@@ -1,8 +1,8 @@
 {
-    "name": "@quentinguidee/gitignore-ultimate",
+    "name": "@quentinguidee/ultimate-language-server",
     "license": "MIT",
     "private": true,
     "workspaces": [
-        "client"
+        "clients/*"
     ]
 }

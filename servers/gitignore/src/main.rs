@@ -1,26 +1,27 @@
-use crate::ast::AST;
-use crate::parser::parser;
 use chumsky::prelude::*;
 use dashmap::DashMap;
 use tokio::io::{stdin, stdout};
+use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-    CompletionOptions, CompletionParams, CompletionResponse, Diagnostic, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    InitializeParams, InitializeResult, InitializedParams, MessageType, OneOf, Position, Range,
-    ServerCapabilities, TextDocumentIdentifier, TextDocumentItem, TextDocumentSyncCapability,
-    TextDocumentSyncKind, VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
+    CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializedParams, InitializeParams,
+    InitializeResult, MessageType, OneOf, ServerCapabilities, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
-use tower_lsp::{Client, LanguageServer, LspService, Server};
 use url::Url;
 
-use crate::workspace::Workspace;
+use lsp_workspace::workspace::Workspace;
+
+use crate::ast::AST;
+use crate::features::diagnostics::Diagnostics;
+use crate::parser::parser;
 
 mod ast;
-mod file;
+mod features;
 mod parser;
-mod workspace;
 
 #[derive(Debug)]
 struct Backend {
@@ -123,31 +124,7 @@ impl Backend {
         let parser = parser();
         let (out, err) = parser.parse(text.as_str()).into_output_errors();
 
-        let errors = err.into_iter();
-
-        let mut diagnostics = vec![];
-        for error in errors {
-            let span = error.span();
-
-            let (start_line, start_char) = file.get_position_at(span.start);
-            let (end_line, end_char) = file.get_position_at(span.end);
-
-            let range = Range::new(
-                Position::new(start_line, start_char),
-                Position::new(end_line, end_char),
-            );
-
-            diagnostics.push(Diagnostic::new(
-                range,
-                Some(DiagnosticSeverity::ERROR),
-                None,
-                Some("Gitignore Ultimate".to_string()),
-                error.to_string(),
-                None,
-                None,
-            ));
-        }
-
+        let diagnostics = Diagnostics::generate(err, &file);
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;

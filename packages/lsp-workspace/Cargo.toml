@@ -1,0 +1,10 @@
+[package]
+name = "lsp-workspace"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tower-lsp = "0.20.0"
+percent-encoding = "2.3.1"
+ropey = "1.6.1"
+dashmap = "5.5.3"

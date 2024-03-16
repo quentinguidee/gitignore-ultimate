@@ -6,7 +6,7 @@
             "type": "extensionHost",
             "request": "launch",
             "args": [
-                "--extensionDevelopmentPath=${workspaceFolder}/client"
+                "--extensionDevelopmentPath=${workspaceFolder}/clients/vscode-gitignore"
             ],
 			"runtimeExecutable": "${execPath}",
             "autoAttachChildProcesses": true,
@@ -20,13 +20,13 @@
             "request": "launch",
             "args": [
                 "--disable-extensions",
-                "--extensionDevelopmentPath=${workspaceFolder}/client",
-                "--extensionTestsPath=${workspaceFolder}/client/out/tests/suite/index",
-                "${workspaceFolder}/client/src/tests/suite/workspace/test.code-workspace"
+                "--extensionDevelopmentPath=${workspaceFolder}/clients/vscode-gitignore",
+                "--extensionTestsPath=${workspaceFolder}/clients/vscode-gitignore/out/tests/suite/index",
+                "${workspaceFolder}/clients/vscode-gitignore/src/tests/suite/workspace/test.code-workspace"
             ],
 			"runtimeExecutable": "${execPath}",
             "outFiles": [
-                "${workspaceFolder}/client/out/tests/**/*.js"
+                "${workspaceFolder}/clients/vscode-gitignore/out/tests/**/*.js"
             ],
         }
     ]
