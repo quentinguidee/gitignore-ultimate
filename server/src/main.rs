@@ -123,37 +123,34 @@ impl Backend {
         let parser = parser();
         let (out, err) = parser.parse(text.as_str()).into_output_errors();
 
-        let no_errors = err.is_empty();
         let errors = err.into_iter();
 
+        let mut diagnostics = vec![];
         for error in errors {
             let span = error.span();
 
             let (start_line, start_char) = file.get_position_at(span.start);
             let (end_line, end_char) = file.get_position_at(span.end);
 
-            let diagnostic = Diagnostic::new(
-                Range::new(
-                    Position::new(start_line, start_char),
-                    Position::new(end_line, end_char),
-                ),
+            let range = Range::new(
+                Position::new(start_line, start_char),
+                Position::new(end_line, end_char),
+            );
+
+            diagnostics.push(Diagnostic::new(
+                range,
                 Some(DiagnosticSeverity::ERROR),
                 None,
                 Some("Gitignore Ultimate".to_string()),
                 error.to_string(),
                 None,
                 None,
-            );
-            self.client
-                .publish_diagnostics(uri.clone(), vec![diagnostic], None)
-                .await;
+            ));
         }
 
-        if no_errors {
-            self.client
-                .publish_diagnostics(uri.clone(), vec![], None)
-                .await;
-        }
+        self.client
+            .publish_diagnostics(uri.clone(), diagnostics, None)
+            .await;
 
         if out.is_some() {
             let ast = AST::parse(out.unwrap());

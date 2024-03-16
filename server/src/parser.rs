@@ -1,4 +1,4 @@
-use chumsky::prelude::{any, end, just, Rich};
+use chumsky::prelude::{any, end, just, skip_then_retry_until, Rich};
 use chumsky::primitive::choice;
 use chumsky::text::newline;
 use chumsky::{extra, IterParser, Parser};
@@ -17,7 +17,7 @@ pub enum Token {
 
 pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>>> {
     let comment = just("#")
-        .then(any().and_is(newline().not()).repeated())
+        .then(any().and_is(newline().not()).and_is(end().not()).repeated())
         .map(|_| Comment);
 
     let segment = any()
@@ -69,9 +69,10 @@ pub fn parser<'a>() -> impl Parser<'a, &'a str, Token, extra::Err<Rich<'a, char>
         });
 
     let lines = choice((comment, path))
-        .separated_by(newline())
-        .allow_leading()
-        .allow_trailing()
+        .separated_by(newline().recover_with(skip_then_retry_until(
+            any().ignored(),
+            newline().ignored().or(end()).ignored(),
+        )))
         .collect::<Vec<_>>()
         .map(Token::File);
 
@@ -84,7 +85,7 @@ mod tests {
 
     #[test]
     fn test_path() {
-        let tree = parser().parse("a/b/c").unwrap();
+        let tree = parser().parse("a/b/c/d/e").unwrap();
         assert_eq!(
             tree,
             Token::File(vec![Token::Path(vec![
@@ -92,7 +93,11 @@ mod tests {
                 Token::Separator,
                 Token::Segment("b".to_string()),
                 Token::Separator,
-                Token::Segment("c".to_string())
+                Token::Segment("c".to_string()),
+                Token::Separator,
+                Token::Segment("d".to_string()),
+                Token::Separator,
+                Token::Segment("e".to_string())
             ])])
         );
     }
@@ -117,7 +122,10 @@ mod tests {
     #[test]
     fn test_line_empty() {
         let tree = parser().parse("\n\n").unwrap();
-        assert_eq!(tree, Token::File(vec![Path(vec![]), Path(vec![])]));
+        assert_eq!(
+            tree,
+            Token::File(vec![Path(vec![]), Path(vec![]), Path(vec![])])
+        );
     }
 
     #[test]
