@@ -1,23 +1,23 @@
-use chumsky::prelude::*;
 use dashmap::DashMap;
 use tokio::io::{stdin, stdout};
-use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializedParams, InitializeParams,
-    InitializeResult, MessageType, OneOf, ServerCapabilities, TextDocumentIdentifier,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, InitializeResult,
+    InitializedParams, MessageType, OneOf, ServerCapabilities, TextDocumentIdentifier,
     TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
     VersionedTextDocumentIdentifier, WorkspaceFoldersServerCapabilities,
     WorkspaceServerCapabilities,
 };
+use tower_lsp::{Client, LanguageServer, LspService, Server};
 use url::Url;
 
 use lsp_workspace::workspace::Workspace;
 
 use crate::ast::AST;
+use crate::features::completions::Completions;
 use crate::features::diagnostics::Diagnostics;
-use crate::parser::parser;
+use crate::parser::ParseTree;
 
 mod ast;
 mod features;
@@ -27,6 +27,7 @@ mod parser;
 struct Backend {
     client: Client,
     workspace: Workspace,
+    parse_trees: DashMap<Url, ParseTree>,
     asts: DashMap<Url, AST>,
 }
 
@@ -35,6 +36,7 @@ impl Backend {
         Self {
             client,
             workspace: Workspace::new(),
+            parse_trees: DashMap::new(),
             asts: DashMap::new(),
         }
     }
@@ -98,11 +100,24 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         let TextDocumentIdentifier { uri, .. } = params.text_document;
         self.workspace.close(&uri);
+        self.parse_trees.remove(&uri);
         self.asts.remove(&uri);
     }
 
-    async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        Ok(Some(CompletionResponse::Array(vec![])))
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let url = params.text_document_position.text_document.uri;
+        let parse_tree = match self.parse_trees.get(&url) {
+            Some(ast) => ast,
+            None => return Ok(None),
+        };
+        let file = match self.workspace.files.get(&url.to_string()) {
+            Some(file) => file,
+            None => return Ok(None),
+        };
+
+        let pos = params.text_document_position.position;
+        let index = file.get_offset_at(pos.line, pos.character);
+        Ok(Completions::generate(&parse_tree, index))
     }
 }
 
@@ -121,8 +136,7 @@ impl Backend {
 
         let text = file.get_content();
 
-        let parser = parser();
-        let (out, err) = parser.parse(text.as_str()).into_output_errors();
+        let (out, err) = ParseTree::generate_from(text.as_str());
 
         let diagnostics = Diagnostics::generate(err, &file);
         self.client
@@ -130,7 +144,9 @@ impl Backend {
             .await;
 
         if out.is_some() {
-            let ast = AST::parse(out.unwrap());
+            let out = out.unwrap();
+            self.parse_trees.insert(uri.clone(), out.clone());
+            let ast = AST::generate_from(out);
             self.asts.insert(uri, ast);
         }
     }

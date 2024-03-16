@@ -1,5 +1,6 @@
-use crate::parser::Token;
 use std::fmt::Debug;
+
+use crate::parser::{ParseTree, Token};
 
 #[derive(Debug)]
 pub enum Node {
@@ -21,15 +22,25 @@ impl PartialEq for Node {
     }
 }
 
+impl Node {
+    pub fn get_children(&self) -> Option<&Vec<Node>> {
+        match &self {
+            Node::File { children } => Some(children),
+            Node::Path { children } => Some(children),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct AST {
     pub root: Node,
 }
 
 impl AST {
-    pub fn parse(token: Token) -> AST {
+    pub fn generate_from(parse_tree: ParseTree) -> AST {
         AST {
-            root: Self::visit_token(token).unwrap(),
+            root: Self::visit_token(parse_tree.root).unwrap(),
         }
     }
 
@@ -39,27 +50,27 @@ impl AST {
 
     pub fn visit_token(token: Token) -> Option<Node> {
         match token {
-            Token::File(tokens) => Some(Node::File {
-                children: Self::visit_tokens(tokens),
+            Token::File { children, .. } => Some(Node::File {
+                children: Self::visit_tokens(children),
             }),
-            Token::Path(tokens) => {
-                let children = Self::visit_tokens(tokens);
+            Token::Path { children, .. } => {
+                let children = Self::visit_tokens(children);
                 if children.is_empty() {
                     None
                 } else {
                     Some(Node::Path { children })
                 }
             }
-            Token::Segment(segment) => {
-                if segment.is_empty() {
+            Token::Segment { value, .. } => {
+                if value.is_empty() {
                     None
                 } else {
-                    Some(Node::Segment(segment))
+                    Some(Node::Segment(value))
                 }
             }
-            Token::Negate => Some(Node::Negate),
-            Token::Separator => None,
-            Token::Comment => None,
+            Token::Negate { .. } => Some(Node::Negate),
+            Token::Separator { .. } => None,
+            Token::Comment { .. } => None,
         }
     }
 }
@@ -67,13 +78,11 @@ impl AST {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parser;
-    use chumsky::Parser;
 
     macro_rules! assert_eq_ast {
         ($a:expr, $b:expr) => {
-            let root = parser().parse($a).unwrap();
-            let ast = AST::parse(root);
+            let (parse_tree, _) = ParseTree::generate_from($a);
+            let ast = AST::generate_from(parse_tree.unwrap());
             assert_eq!(ast.root, $b);
         };
     }

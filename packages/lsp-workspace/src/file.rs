@@ -1,6 +1,7 @@
+use std::path::PathBuf;
+
 use percent_encoding::percent_decode;
 use ropey::Rope;
-use std::path::PathBuf;
 use tower_lsp::lsp_types::{Range, TextDocumentContentChangeEvent, Url};
 
 pub struct File {
@@ -28,6 +29,10 @@ impl File {
         let line = self.text.char_to_line(offset);
         let character = offset - self.text.line_to_char(line);
         (line as u32, character as u32)
+    }
+
+    pub fn get_offset_at(&self, line: u32, character: u32) -> usize {
+        self.text.line_to_char(line as usize) + character as usize
     }
 
     pub fn path(&self) -> Result<PathBuf, String> {
